@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Banhagem de Peixes Doutor José Marcelo — Monitor de Parâmetros de Aquário</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg: #081826;
+    --bg-deep: #051019;
+    --panel: #0F2438;
+    --panel-alt: #163348;
+    --border: rgba(72,229,194,0.14);
+    --accent: #48E5C2;
+    --accent-dim: rgba(72,229,194,0.35);
+    --warn: #FFB25E;
+    --danger: #FF6B6B;
+    --text: #EAF6F3;
+    --muted: #6F8FA3;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background: radial-gradient(ellipse at top, var(--bg) 0%, var(--bg-deep) 70%);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height:100vh;
+    padding: 32px 20px 60px;
+  }
+  .wrap{max-width: 920px; margin:0 auto;}
+
+  /* Ambient bubbles */
+  .bubbles{position:fixed; inset:0; overflow:hidden; pointer-events:none; z-index:0; opacity:0.5;}
+  .bubble{position:absolute; bottom:-40px; border-radius:50%; background:radial-gradient(circle at 30% 30%, rgba(72,229,194,0.35), rgba(72,229,194,0.02)); animation: rise linear infinite;}
+  @keyframes rise{ to { transform: translateY(-110vh); opacity:0;} }
+  @media (prefers-reduced-motion: reduce){ .bubble{animation:none; display:none;} }
+
+  header{position:relative; z-index:1; margin-bottom: 28px;}
+  .eyebrow{font-family: var(--font-mono); font-size:12px; letter-spacing:0.14em; text-transform:uppercase; color:var(--accent); margin-bottom:8px;}
+  h1{font-family: var(--font-display); font-size: 40px; font-weight:700; margin:0 0 6px; letter-spacing:-0.02em;}
+  .subtitle{color:var(--muted); font-size:15px; max-width: 520px; line-height:1.5;}
+
+  .type-select{margin-top:20px; display:flex; gap:10px; flex-wrap:wrap;}
+  .type-btn{
+    font-family: var(--font-body); font-size:13px; font-weight:600;
+    padding:9px 16px; border-radius:999px; border:1px solid var(--border);
+    background: var(--panel); color: var(--muted); cursor:pointer;
+    transition: all 0.15s ease;
+  }
+  .type-btn:hover{border-color: var(--accent-dim); color: var(--text);}
+  .type-btn.active{ background: var(--accent); color:#04241d; border-color:var(--accent);}
+
+  section{position:relative; z-index:1; margin-bottom:26px;}
+  .card{
+    background: linear-gradient(180deg, var(--panel), var(--panel-alt));
+    border:1px solid var(--border);
+    border-radius:16px;
+    padding:22px 24px;
+  }
+  .card h2{font-family:var(--font-display); font-size:18px; margin:0 0 4px; font-weight:600;}
+  .card .hint{color:var(--muted); font-size:13px; margin:0 0 18px;}
+
+  /* Signature: test strip */
+  .strip{display:flex; gap:10px; flex-wrap:wrap;}
+  .pad{
+    flex: 1 1 100px; min-width:100px;
+    border-radius:12px; padding:14px 12px;
+    background: rgba(255,255,255,0.02);
+    border:1px solid var(--border);
+    text-align:center;
+    position:relative;
+    overflow:hidden;
+  }
+  .pad::before{
+    content:''; position:absolute; inset:0; opacity:0.16;
+  }
+  .pad.good::before{ background: var(--accent); box-shadow:0 0 24px 8px var(--accent);}
+  .pad.warn::before{ background: var(--warn); box-shadow:0 0 24px 8px var(--warn);}
+  .pad.danger::before{ background: var(--danger); box-shadow:0 0 24px 8px var(--danger);}
+  .pad.empty::before{ background: transparent; }
+  .pad-label{position:relative; font-family:var(--font-mono); font-size:11px; text-transform:uppercase; letter-spacing:0.06em; color:var(--muted); margin-bottom:6px;}
+  .pad-value{position:relative; font-family:var(--font-mono); font-size:20px; font-weight:700;}
+  .pad-status{position:relative; font-size:11px; margin-top:4px; font-weight:600;}
+  .pad.good .pad-status{color:var(--accent);}
+  .pad.warn .pad-status{color:var(--warn);}
+  .pad.danger .pad-status{color:var(--danger);}
+  .pad.empty .pad-status{color:var(--muted);}
+
+  /* Form */
+  .grid{display:grid; grid-template-columns: repeat(auto-fill, minmax(140px,1fr)); gap:14px; margin-bottom:16px;}
+  label{display:block; font-size:12px; color:var(--muted); margin-bottom:6px; font-family:var(--font-mono);}
+  input[type=number], input[type=date]{
+    width:100%; background: var(--bg-deep); border:1px solid var(--border);
+    color:var(--text); font-family:var(--font-mono); font-size:14px;
+    padding:10px 10px; border-radius:8px; outline:none;
+  }
+  input:focus{border-color:var(--accent);}
+  .btn{
+    font-family:var(--font-body); font-weight:600; font-size:14px;
+    background: var(--accent); color:#04241d; border:none;
+    padding:12px 22px; border-radius:10px; cursor:pointer;
+  }
+  .btn:hover{filter:brightness(1.08);}
+  .btn:focus-visible, .type-btn:focus-visible, select:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+  .btn-ghost{
+    background:transparent; color:var(--muted); border:1px solid var(--border);
+    font-size:13px; padding:8px 14px; border-radius:8px; cursor:pointer; font-family:var(--font-body);
+  }
+
+  /* History */
+  .param-tabs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;}
+  .ptab{font-family:var(--font-mono); font-size:12px; padding:6px 12px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--muted); cursor:pointer;}
+  .ptab.active{background:var(--panel-alt); color:var(--accent); border-color:var(--accent-dim);}
+  canvas{max-height:220px;}
+
+  table{width:100%; border-collapse:collapse; margin-top:14px; font-size:13px;}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--border);}
+  th{color:var(--muted); font-family:var(--font-mono); font-weight:500; font-size:11px; text-transform:uppercase; letter-spacing:0.04em;}
+  td{font-family:var(--font-mono);}
+  td.status-good{color:var(--accent);}
+  td.status-warn{color:var(--warn);}
+  td.status-danger{color:var(--danger);}
+  .row-actions button{background:none; border:none; color:var(--muted); cursor:pointer; font-size:12px; text-decoration:underline;}
+
+  .empty-state{color:var(--muted); font-size:14px; text-align:center; padding:30px 10px;}
+  footer{position:relative; z-index:1; text-align:center; color:var(--muted); font-size:12px; margin-top:30px;}
+</style>
+</head>
+<body>
+
+<div class="bubbles" id="bubbles"></div>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Banhagem de Peixes Doutor José Marcelo · Registro de Água</div>
+    <h1>Como está sua água hoje?</h1>
+    <p class="subtitle">Registre suas medições e compare na hora com a faixa ideal para o seu tipo de aquário.</p>
+    <div class="type-select" id="typeSelect"></div>
+  </header>
+
+  <section class="card">
+    <h2>Última leitura</h2>
+    <p class="hint" id="lastReadingHint">Nenhuma leitura registrada ainda.</p>
+    <div class="strip" id="strip"></div>
+  </section>
+
+  <section class="card">
+    <h2>Nova medição</h2>
+    <p class="hint">Preencha o que você mediu — pode deixar em branco o que não testou.</p>
+    <div class="grid">
+      <div>
+        <label>Data</label>
+        <input type="date" id="f-date">
+      </div>
+    </div>
+    <div class="grid" id="paramInputs"></div>
+    <button class="btn" id="saveBtn">Salvar medição</button>
+  </section>
+
+  <section class="card">
+    <h2>Histórico e tendência</h2>
+    <p class="hint" id="historyHint">Escolha um parâmetro para ver a evolução ao longo do tempo.</p>
+    <div class="param-tabs" id="paramTabs"></div>
+    <canvas id="trendChart" height="90"></canvas>
+    <div id="tableWrap"></div>
+  </section>
+
+  <footer>Faixas ideais são orientações gerais de aquarismo — ajuste conforme as espécies do seu tanque.</footer>
+</div>
+
+<script>
+// ---------- Ambient bubbles ----------
+const bubbleContainer = document.getElementById('bubbles');
+for(let i=0;i<14;i++){
+  const b = document.createElement('div');
+  b.className='bubble';
+  const size = 4 + Math.random()*10;
+  b.style.width=b.style.height=size+'px';
+  b.style.left = Math.random()*100+'%';
+  b.style.animationDuration = (10+Math.random()*14)+'s';
+  b.style.animationDelay = (Math.random()*14)+'s';
+  bubbleContainer.appendChild(b);
+}
+
+// ---------- Domain data ----------
+const PARAM_META = {
+  temp:     {label:'Temp.',      unit:'°C',  step:0.1},
+  ph:       {label:'pH',         unit:'',    step:0.1},
+  nh3:      {label:'Amônia',     unit:'ppm', step:0.1},
+  no2:      {label:'Nitrito',    unit:'ppm', step:0.1},
+  no3:      {label:'Nitrato',    unit:'ppm', step:1},
+  gh:       {label:'GH',         unit:'dGH', step:1},
+  kh:       {label:'KH',         unit:'dKH', step:1},
+  salinity: {label:'Salinidade', unit:'SG',  step:0.001},
+  phosphate:{label:'Fosfato',    unit:'ppm', step:0.01},
+};
+
+const AQUARIUM_TYPES = {
+  freshwater: {
+    name:'Comunidade de água doce',
+    ranges:{ temp:[24,26], ph:[6.5,7.5], nh3:[0,0.25], no2:[0,0.25], no3:[0,20], gh:[4,8], kh:[3,6] }
+  },
+  planted: {
+    name:'Aquário plantado',
+    ranges:{ temp:[22,26], ph:[6.5,7.2], nh3:[0,0.25], no2:[0,0.25], no3:[10,20], gh:[4,8], kh:[2,4] }
+  },
+  cichlid: {
+    name:'Ciclídeos africanos',
+    ranges:{ temp:[24,27], ph:[7.8,8.6], nh3:[0,0.25], no2:[0,0.25], no3:[0,20], gh:[10,15], kh:[8,12] }
+  },
+  betta: {
+    name:'Betta',
+    ranges:{ temp:[24,27], ph:[6.5,7.5], nh3:[0,0.25], no2:[0,0.25], no3:[0,20], gh:[3,8], kh:[2,5] }
+  },
+  marine: {
+    name:'Marinho / Reef',
+    ranges:{ temp:[24,27], ph:[7.8,8.4], nh3:[0,0.25], no2:[0,0.25], no3:[0,10], kh:[7,12], salinity:[1.023,1.025], phosphate:[0,0.03] }
+  }
+};
+
+let currentType = 'freshwater';
+let entries = [];
+let activeParam = null;
+let chart = null;
+
+// ---------- Storage ----------
+async function loadState(){
+  try{
+    const t = await window.storage.get('aquascan-type');
+    if(t && t.value) currentType = JSON.parse(t.value);
+  }catch(e){ /* no saved type yet */ }
+  try{
+    const e = await window.storage.get('aquascan-entries');
+    if(e && e.value) entries = JSON.parse(e.value);
+  }catch(e){ entries = []; }
+}
+async function saveType(){
+  try{ await window.storage.set('aquascan-type', JSON.stringify(currentType)); }
+  catch(e){ console.error('Falha ao salvar tipo', e); }
+}
+async function saveEntries(){
+  try{ await window.storage.set('aquascan-entries', JSON.stringify(entries)); }
+  catch(e){ console.error('Falha ao salvar histórico', e); }
+}
+
+// ---------- Status calc ----------
+function statusFor(value, range){
+  if(value === undefined || value === null || value === '' || isNaN(value)) return null;
+  const [min,max] = range;
+  const span = Math.max(max - min, 0.0001);
+  const tolerance = span * 0.35;
+  if(value >= min && value <= max) return 'good';
+  if(value >= min - tolerance && value <= max + tolerance) return 'warn';
+  return 'danger';
+}
+function statusLabel(s){
+  return s==='good' ? 'Ideal' : s==='warn' ? 'Atenção' : s==='danger' ? 'Fora da faixa' : '—';
+}
+
+// ---------- UI: type selector ----------
+function renderTypeSelect(){
+  const el = document.getElementById('typeSelect');
+  el.innerHTML='';
+  Object.entries(AQUARIUM_TYPES).forEach(([key,cfg])=>{
+    const b = document.createElement('button');
+    b.className = 'type-btn' + (key===currentType ? ' active' : '');
+    b.textContent = cfg.name;
+    b.onclick = async ()=>{ currentType = key; await saveType(); activeParam=null; renderAll(); };
+    el.appendChild(b);
+  });
+}
+
+// ---------- UI: form inputs ----------
+function renderParamInputs(){
+  const el = document.getElementById('paramInputs');
+  el.innerHTML='';
+  const ranges = AQUARIUM_TYPES[currentType].ranges;
+  Object.keys(ranges).forEach(key=>{
+    const meta = PARAM_META[key];
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <label>${meta.label}${meta.unit ? ' ('+meta.unit+')' : ''}</label>
+      <input type="number" step="${meta.step}" id="in-${key}" placeholder="ideal: ${ranges[key][0]}–${ranges[key][1]}">
+    `;
+    el.appendChild(wrap);
+  });
+  document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
+}
+
+// ---------- UI: test strip ----------
+function renderStrip(){
+  const strip = document.getElementById('strip');
+  const hint = document.getElementById('lastReadingHint');
+  strip.innerHTML='';
+  const ranges = AQUARIUM_TYPES[currentType].ranges;
+  const typeEntries = entries.filter(e=>e.type===currentType).sort((a,b)=>a.date.localeCompare(b.date));
+  const last = typeEntries[typeEntries.length-1];
+
+  if(!last){
+    hint.textContent = 'Nenhuma leitura registrada ainda para este tipo de aquário.';
+  } else {
+    hint.textContent = 'Última medição em ' + formatDate(last.date) + '.';
+  }
+
+  Object.keys(ranges).forEach(key=>{
+    const meta = PARAM_META[key];
+    const value = last ? last.values[key] : undefined;
+    const status = last ? statusFor(value, ranges[key]) : null;
+    const pad = document.createElement('div');
+    pad.className = 'pad ' + (status || 'empty');
+    pad.innerHTML = `
+      <div class="pad-label">${meta.label}</div>
+      <div class="pad-value">${(value!==undefined && value!==null && value!=='') ? value : '—'}</div>
+      <div class="pad-status">${status ? statusLabel(status) : 'Sem dado'}</div>
+    `;
+    strip.appendChild(pad);
+  });
+}
+
+function formatDate(d){
+  const [y,m,day] = d.split('-');
+  return `${day}/${m}/${y}`;
+}
+
+// ---------- Save new entry ----------
+async function saveEntry(){
+  const ranges = AQUARIUM_TYPES[currentType].ranges;
+  const date = document.getElementById('f-date').value;
+  if(!date){ alert('Escolha uma data.'); return; }
+  const values = {};
+  let any = false;
+  Object.keys(ranges).forEach(key=>{
+    const raw = document.getElementById('in-'+key).value;
+    if(raw !== ''){ values[key] = parseFloat(raw); any = true; }
+  });
+  if(!any){ alert('Preencha ao menos um parâmetro.'); return; }
+  entries.push({ id: Date.now().toString(36), type: currentType, date, values });
+  await saveEntries();
+  renderAll();
+}
+
+// ---------- History: tabs, chart, table ----------
+function renderParamTabs(){
+  const tabsEl = document.getElementById('paramTabs');
+  tabsEl.innerHTML='';
+  const ranges = AQUARIUM_TYPES[currentType].ranges;
+  const keys = Object.keys(ranges);
+  if(!activeParam || !keys.includes(activeParam)) activeParam = keys[0];
+  keys.forEach(key=>{
+    const meta = PARAM_META[key];
+    const b = document.createElement('button');
+    b.className = 'ptab' + (key===activeParam ? ' active' : '');
+    b.textContent = meta.label;
+    b.onclick = ()=>{ activeParam = key; renderAll(); };
+    tabsEl.appendChild(b);
+  });
+}
+
+function renderChartAndTable(){
+  const ranges = AQUARIUM_TYPES[currentType].ranges;
+  const typeEntries = entries.filter(e=>e.type===currentType).sort((a,b)=>a.date.localeCompare(b.date));
+  const historyHint = document.getElementById('historyHint');
+  const tableWrap = document.getElementById('tableWrap');
+  const canvas = document.getElementById('trendChart');
+
+  const points = typeEntries.filter(e => e.values[activeParam] !== undefined);
+
+  if(chart){ chart.destroy(); chart=null; }
+
+  if(points.length === 0){
+    canvas.style.display='none';
+    tableWrap.innerHTML = '<div class="empty-state">Ainda não há medições de ' + (PARAM_META[activeParam]?.label || '') + ' para este aquário.</div>';
+    historyHint.textContent = 'Escolha um parâmetro para ver a evolução ao longo do tempo.';
+    return;
+  }
+
+  canvas.style.display='block';
+  const [min,max] = ranges[activeParam];
+  const labels = points.map(p=>formatDate(p.date));
+  const data = points.map(p=>p.values[activeParam]);
+
+  chart = new Chart(canvas.getContext('2d'), {
+    type:'line',
+    data:{
+      labels,
+      datasets:[
+        {
+          label: PARAM_META[activeParam].label,
+          data,
+          borderColor:'#48E5C2',
+          backgroundColor:'rgba(72,229,194,0.12)',
+          tension:0.3,
+          fill:true,
+          pointBackgroundColor:'#48E5C2',
+          pointRadius:4,
+        },
+        {
+          label:'Faixa ideal (mín)',
+          data: labels.map(()=>min),
+          borderColor:'rgba(111,143,163,0.5)',
+          borderDash:[4,4],
+          pointRadius:0,
+          fill:false,
+        },
+        {
+          label:'Faixa ideal (máx)',
+          data: labels.map(()=>max),
+          borderColor:'rgba(111,143,163,0.5)',
+          borderDash:[4,4],
+          pointRadius:0,
+          fill:false,
+        }
+      ]
+    },
+    options:{
+      responsive:true,
+      plugins:{
+        legend:{ labels:{ color:'#6F8FA3', font:{family:'JetBrains Mono', size:11} } }
+      },
+      scales:{
+        x:{ ticks:{color:'#6F8FA3', font:{family:'JetBrains Mono', size:10}}, grid:{color:'rgba(72,229,194,0.06)'} },
+        y:{ ticks:{color:'#6F8FA3', font:{family:'JetBrains Mono', size:10}}, grid:{color:'rgba(72,229,194,0.06)'} }
+      }
+    }
+  });
+
+  historyHint.textContent = points.length + ' medição(ões) de ' + PARAM_META[activeParam].label + ' registrada(s).';
+
+  // Table (most recent first)
+  let rows = '';
+  [...typeEntries].reverse().forEach(e=>{
+    const val = e.values[activeParam];
+    if(val===undefined) return;
+    const status = statusFor(val, ranges[activeParam]);
+    rows += `<tr>
+      <td>${formatDate(e.date)}</td>
+      <td>${val} ${PARAM_META[activeParam].unit}</td>
+      <td class="status-${status}">${statusLabel(status)}</td>
+      <td class="row-actions"><button data-id="${e.id}" data-key="${activeParam}" class="del-btn">remover</button></td>
+    </tr>`;
+  });
+  tableWrap.innerHTML = `<table>
+    <thead><tr><th>Data</th><th>Valor</th><th>Status</th><th></th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+
+  tableWrap.querySelectorAll('.del-btn').forEach(btn=>{
+    btn.onclick = async ()=>{
+      const id = btn.getAttribute('data-id');
+      const key = btn.getAttribute('data-key');
+      const entry = entries.find(e=>e.id===id);
+      if(entry){
+        delete entry.values[key];
+        if(Object.keys(entry.values).length===0){
+          entries = entries.filter(e=>e.id!==id);
+        }
+        await saveEntries();
+        renderAll();
+      }
+    };
+  });
+}
+
+// ---------- Render orchestration ----------
+function renderAll(){
+  renderTypeSelect();
+  renderParamInputs();
+  renderStrip();
+  renderParamTabs();
+  renderChartAndTable();
+}
+
+document.getElementById('saveBtn').addEventListener('click', saveEntry);
+
+(async function init(){
+  await loadState();
+  renderAll();
+})();
+</script>
+</body>
+</html>
